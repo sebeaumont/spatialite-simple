@@ -1,0 +1,14 @@
+resolver: nightly-2019-09-30
+
+packages:
+  - .
+
+extra-deps:
+  - git: https://github.com/sebeaumont/direct-sqlite.git
+    commit: 36f3a7aa87c538a888a22d0077314fa0996ed44d
+  - git: https://github.com/sebeaumont/sqlite-simple.git
+    commit: 733fcecc5dd9336baa1f6a072c11375b1b61165c
+
+flags:
+  direct-sqlite:
+    systemlib: true
