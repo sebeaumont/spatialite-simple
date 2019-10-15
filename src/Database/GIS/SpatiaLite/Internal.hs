@@ -52,6 +52,7 @@ closeConnection (Connection d) = SS.close d
 -- | may want more here in due course...
 data GISEnv = Env { envDB :: !Connection }
 
+-- | Monad transformer stack threading access to GISEnv via ReaderT
 newtype GIS a = GIS (ReaderT GISEnv IO a)
   deriving (Functor, Applicative, Monad, MonadIO, MonadReader GISEnv)
 
@@ -61,9 +62,7 @@ class (Monad m) => MonadGIS m where
 instance MonadGIS GIS where
   liftGIS = id
 
-
--- | Run GIS actions in the context of a given database URI
---
+-- | Run GIS actions in the context of a given database connection
 runGIS :: String -> GIS a -> IO a
 runGIS uri g = 
   bracket
@@ -74,7 +73,7 @@ runGIS uri g =
 -- | Internal version without connection management
 --
 runGISInternal :: Connection -> GIS a -> IO a
-runGISInternal conn (GIS redis) = runReaderT redis (Env conn)
+runGISInternal conn (GIS gis) = runReaderT gis (Env conn)
  
 --- | GIS Query 
 queryGIS :: (SS.ToRow p, SS.FromRow a, MonadGIS m) => SS.Query -> p -> m [a]
