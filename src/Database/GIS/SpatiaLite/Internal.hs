@@ -112,7 +112,7 @@ loadSpatialExtension c =
 tableExists :: SS.Connection -> T.Text -> IO Bool
 tableExists c t = 
   SS.query c "SELECT count(*) FROM sqlite_master where name=? and type='table'" [t] >>= \case
-    ((SS.Only r):_) -> return $ (r :: Integer) < 1
+    ((SS.Only r):_) -> return $ (r :: Integer) > 0
     _ -> return False
 
 -- Predicate to determine if the SpatiaLite schema exists. 
