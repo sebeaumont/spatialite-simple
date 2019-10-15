@@ -1,16 +1,9 @@
-{-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE LambdaCase #-}
-{-# LANGUAGE RankNTypes #-}
-{-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE GADTs #-}
---{-# LANGUAGE FunctionalDependencies #-}
---{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
-{-# LANGUAGE DeriveFunctor #-}
-{-# LANGUAGE ScopedTypeVariables  #-}
--- {-# LANGUAGE FunctionalDependencies #-}
-
+-- | The glorious SpatiaLite GIS implementation module.
+-- Copyright (C) Simon Beaumont 2019 See: LICENSE for terms and conidtiions of use.
+-- 
 module Database.GIS.SpatiaLite.Internal 
   ( GIS
   , MonadGIS
@@ -27,9 +20,9 @@ import Control.Monad.Reader
 import qualified Data.Text as T
 
 import qualified Database.SQLite.Simple as SS
---import qualified Database.SQLite3 as SQL
 import qualified Database.SQLite3.Direct as SD
 
+-- Wrap underlying database connection
 newtype Connection = Connection SS.Connection
 
 -- |  Cautiously init the SQLite instance to make it SpatiaLite GIS
@@ -98,24 +91,39 @@ queryGIS_ q  = liftGIS $ GIS $ do
 -- Low level calls we use to init the SpatiaLite schema
 --------------------------------------------------------
 
+-- This should work with vanilla sqlite-direct API rather than
+-- our customised version which exposes the c function.
+
 loadExtension :: SS.Connection -> T.Text -> IO ()
 loadExtension c name = SS.execute c "select load_extension(?)" (SS.Only name)
 
+-- Try very hard to load a mod_spatialite extension library
+-- N.B. on some platforms or versions of SQLite the database function 
+-- implementing this seems to do this work for us... 
+
 loadSpatialExtension :: SS.Connection -> IO ()
 loadSpatialExtension c =
-  -- neat but... might have to do this by hand... 
   loadExtension c "mod_spatialite" <|> 
   loadExtension c "mod_spatialite.so" <|>
   loadExtension c "mod_spatialite.dylib"
+
+-- Check if a table exist in the schema.
 
 tableExists :: SS.Connection -> T.Text -> IO Bool
 tableExists c t = 
   SS.query c "SELECT count(*) FROM sqlite_master where name=? and type='table'" [t] >>= \case
     ((SS.Only r):_) -> return $ (r :: Integer) < 1
     _ -> return False
-  
+
+-- Predicate to determine if the SpatiaLite schema exists. 
+-- Not entirely robust as we could drop any number of tables and still
+-- have this one - but it is probably the most crucial. YMMV
+
 hasSpatialSchema :: SS.Connection -> IO Bool
 hasSpatialSchema c = tableExists c "spatial_ref_sys"
+
+-- This may take a while to run on slower platforms as it is very
+-- IO bound...
 
 ensureSpatialSchema :: SS.Connection -> IO ()
 ensureSpatialSchema c = SS.execute_ c "SELECT InitSpatialMetaData()"
