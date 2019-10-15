@@ -11,7 +11,13 @@
 {-# LANGUAGE ScopedTypeVariables  #-}
 -- {-# LANGUAGE FunctionalDependencies #-}
 
-module Database.GIS.SpatiaLite.Internal where
+module Database.GIS.SpatiaLite.Internal 
+  ( GIS
+  , MonadGIS
+  , runGIS
+  , queryGIS
+  , queryGIS_
+  ) where
 
 import Control.Applicative
 import Control.Exception
@@ -26,18 +32,20 @@ import qualified Database.SQLite3.Direct as SD
 
 newtype Connection = Connection SS.Connection
 
+-- |  Cautiously init the SQLite instance to make it SpatiaLite GIS
 initConnection :: String -> IO Connection
-initConnection uri = do
-  c <- SS.open uri
-  -- TODO if any of these fail close the connection... and re-throw like bracket but only if exception
-  _  <- SD.setLoadExtensionEnabled (SS.connectionHandle c) True
-  _ <- loadSpatialExtension c
-  _  <- SD.setLoadExtensionEnabled (SS.connectionHandle c) False
-  ss <- hasSpatialSchema c
-  unless ss (ensureSpatialSchema c)
-  --
-  return $ Connection c
+initConnection uri =
+  bracketOnError
+    (SS.open uri)
+    SS.close
+    -- iff any of this fails we close the underlying connection 
+    (\c -> SD.setLoadExtensionEnabled (SS.connectionHandle c) True >>
+           loadSpatialExtension c >>
+           SD.setLoadExtensionEnabled (SS.connectionHandle c) False >>
+           (hasSpatialSchema c >>= (\ss -> unless ss (ensureSpatialSchema c))) >>
+           (return . Connection) c)
 
+-- | Close the Connection to the GIS
 closeConnection :: Connection -> IO ()
 closeConnection (Connection d) = SS.close d
 
@@ -68,56 +76,28 @@ runGIS uri g =
 runGISInternal :: Connection -> GIS a -> IO a
 runGISInternal conn (GIS redis) = runReaderT redis (Env conn)
  
--- TODO: nned a context to run something extracting the connection
--- and returning a result in the context...
-{-
-data Result where
-  Cool :: SS.FromRow a => [a] -> Result
-  Uncool :: String -> Result
-          
-class GISResult a where
-    decode :: Result -> a
-  
-instance GISResult Result where
-  decode = id
-
-class (MonadGIS m) => GISContext m where
-  returnDecode :: GISResult a => Result -> m a
-  
-instance GISContext GIS where
-  returnDecode = return . decode
-
--- more type foo nonsense
-
-gisQuery :: (SS.ToRow p, GISContext m, GISResult a) => SS.Query -> p -> m a
-gisQuery q p = do
-  r' <- liftGIS $ GIS $ do
-    Connection c <- asks envDB
-    liftIO $ query c q p -- this type ambigous due to row length uncertainty!
-  returnDecode $ Cool r'
-  where
-    query :: (SS.ToRow a, SS.FromRow r) => SS.Connection -> SS.Query -> a -> IO [r]
-    query = SS.query
--}
--- whereas these needs type at trun time -- polydoodle morphism
-gisQuery :: (SS.ToRow p, SS.FromRow a, MonadGIS m) => SS.Query -> p -> m [a]
-gisQuery q p = liftGIS $ GIS $ do
+--- | GIS Query 
+queryGIS :: (SS.ToRow p, SS.FromRow a, MonadGIS m) => SS.Query -> p -> m [a]
+queryGIS q p = liftGIS $ GIS $ do
     Connection c <- asks envDB
     liftIO $ query c q p -- this type ambigous due to row length uncertainty!
   where
     query :: (SS.ToRow a, SS.FromRow r) => SS.Connection -> SS.Query -> a -> IO [r]
     query = SS.query
 
-gisQuery_ :: (SS.FromRow a, MonadGIS m) => SS.Query -> m [a]
-gisQuery_ q  = liftGIS $ GIS $ do
+-- | GIS Query with no parameters 
+queryGIS_ :: (SS.FromRow a, MonadGIS m) => SS.Query -> m [a]
+queryGIS_ q  = liftGIS $ GIS $ do
     Connection c <- asks envDB
     liftIO $ query c q  -- this type ambigous due to row length uncertainty!
   where
     query :: (SS.FromRow r) => SS.Connection -> SS.Query -> IO [r]
     query = SS.query_    
 
-------------
+
+--------------------------------------------------------
 -- Low level calls we use to init the SpatiaLite schema
+--------------------------------------------------------
 
 loadExtension :: SS.Connection -> T.Text -> IO ()
 loadExtension c name = SS.execute c "select load_extension(?)" (SS.Only name)
