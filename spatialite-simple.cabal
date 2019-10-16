@@ -1,4 +1,4 @@
-name:                spatialite
+name:                spatialite-simple
 version:             0.1.0.0
 -- synopsis:            
 -- description:         
@@ -12,7 +12,7 @@ build-type:          Simple
 cabal-version:       >=1.10
 
 --
--- deepblue library under development
+-- spatialite-simple library
 --
         
 library
@@ -27,6 +27,7 @@ library
   default-language:    Haskell2010
   ghc-options:         -O3 -Wall
   exposed-modules:     Database.GIS.SpatiaLite
+                       Database.GIS.Schema
   other-modules:       Database.GIS.SpatiaLite.Internal
   extra-libraries:     sqlite3
   -- this is mac os aka darwin specific
@@ -38,7 +39,7 @@ executable check
   -- other-modules:    
   -- other-extensions:    
   build-depends:       base
-                     , spatialite
+                     , spatialite-simple
                      , text
                      --, direct-sqlite
                      , sqlite-simple

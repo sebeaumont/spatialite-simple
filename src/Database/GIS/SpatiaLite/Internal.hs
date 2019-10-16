@@ -10,6 +10,8 @@ module Database.GIS.SpatiaLite.Internal
   , runGIS
   , queryGIS
   , queryGIS_
+  , executeGIS
+  , executeGIS_
   ) where
 
 import Control.Applicative
@@ -86,6 +88,20 @@ queryGIS_ q  = liftGIS $ GIS $ do
     query :: (SS.FromRow r) => SS.Connection -> SS.Query -> IO [r]
     query = SS.query_    
 
+-- | GIS Execute with no parameters
+executeGIS_ :: (MonadGIS m) => SS.Query -> m ()
+executeGIS_ q = liftGIS $ GIS $ do
+    Connection c <- asks envDB
+    liftIO $ SS.execute_ c q
+
+-- | GIS Execute query binding params
+executeGIS :: (SS.ToRow p, MonadGIS m) => SS.Query -> p -> m ()
+executeGIS q p = liftGIS $ GIS $ do
+  Connection c <- asks envDB
+  liftIO $ SS.execute c q p
+
+-- TODO
+-- - with prepared statement
 
 --------------------------------------------------------
 -- Low level calls we use to init the SpatiaLite schema
@@ -117,7 +133,7 @@ tableExists c t =
 
 -- Predicate to determine if the SpatiaLite schema exists. 
 -- Not entirely robust as we could drop any number of tables and still
--- have this one - but it is probably the most crucial. YMMV
+-- have this one - but it is probably the most crucial.
 
 hasSpatialSchema :: SS.Connection -> IO Bool
 hasSpatialSchema c = tableExists c "spatial_ref_sys"
@@ -127,6 +143,3 @@ hasSpatialSchema c = tableExists c "spatial_ref_sys"
 
 ensureSpatialSchema :: SS.Connection -> IO ()
 ensureSpatialSchema c = SS.execute_ c "SELECT InitSpatialMetaData()"
-
-    
-

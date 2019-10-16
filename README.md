@@ -5,7 +5,7 @@ This package ```spatialite``` is based on ```sqlite-simple``` and in turn ```dir
 we provide some initialisation for the GIS by loading ```mod_spatialite``` into SQLite3 and
 ensuring that the SpatiaLite schema is created.
 
-There is ```GIS``` monad to thread connections among a bunch of gisQuery wrappers for the underlying
+There is ```GIS``` monad to thread connections among a bunch of xxxxxGIS wrappers for the underlying
  ```sqlite-simple``` query api.
 
 N.B. This is a work in progress and is not yet released or tested. There are a number of package
@@ -18,5 +18,5 @@ The ```mod_spatialite``` shared library needs to be installed also and be compat
 All of these problems have bitten me, and continue to crop up. So a proper configure based install is required
 to ensure this is portable and usuable according to how the libraries have been installed.
 
-Then there's a bunch of GIS schema to provide.
+Then there's a bunch of GIS schema functions to provide.
 Watch this space.
