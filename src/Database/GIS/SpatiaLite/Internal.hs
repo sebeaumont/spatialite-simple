@@ -1,13 +1,18 @@
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
--- | The glorious SpatiaLite GIS implementation module.
+
+-- | SpatiaLite GIS implementation module.
 -- Copyright (C) Simon Beaumont 2019 See: LICENSE for terms and conidtiions of use.
--- 
+-- N.B. Still not convinced that the initialisation of the Spatialite module and schema is
+-- robust.
+-- Experimental
+
 module Database.GIS.SpatiaLite.Internal 
   ( GIS
   , MonadGIS
   , runGIS
+  , notGIS -- for testing only: don't do the module loading and ensure Spatialite schema  
   , queryGIS
   , queryGIS_
   , executeGIS
@@ -20,6 +25,7 @@ import Control.Monad
 import Control.Monad.Reader
 
 import qualified Data.Text as T
+import qualified Data.Text.Encoding as E
 
 import qualified Database.SQLite.Simple as SS
 import qualified Database.SQLite3.Direct as SD
@@ -45,7 +51,7 @@ closeConnection :: Connection -> IO ()
 closeConnection (Connection d) = SS.close d
 
 -- | may want more here in due course...
-data GISEnv = Env { envDB :: !Connection }
+data GISEnv = Env { envDB :: Connection }
 
 -- | Monad transformer stack threading access to GISEnv via ReaderT
 newtype GIS a = GIS (ReaderT GISEnv IO a)
@@ -65,11 +71,19 @@ runGIS uri g =
   (liftIO . closeConnection)
   (`runGISInternal` g)
 
--- | Internal version without connection management
+-- open connection but no Spatialite init 
+notGIS :: String -> GIS a -> IO a
+notGIS uri (GIS g) = SS.open uri >>= \c -> runReaderT g (Env $ Connection c)   
+
+-- helper to runReaderT with environment
 --
 runGISInternal :: Connection -> GIS a -> IO a
 runGISInternal conn (GIS gis) = runReaderT gis (Env conn)
- 
+
+----------------------------------
+--- query and execute variants ---
+---------------------------------- 
+
 --- | GIS Query 
 queryGIS :: (SS.ToRow p, SS.FromRow a, MonadGIS m) => SS.Query -> p -> m [a]
 queryGIS q p = liftGIS $ GIS $ do
@@ -101,7 +115,7 @@ executeGIS q p = liftGIS $ GIS $ do
   liftIO $ SS.execute c q p
 
 -- TODO
--- - with prepared statement
+-- - with prepared statement etc...
 
 --------------------------------------------------------
 -- Low level calls we use to init the SpatiaLite schema
@@ -109,19 +123,32 @@ executeGIS q p = liftGIS $ GIS $ do
 
 -- This should work with vanilla sqlite-direct API rather than
 -- our customised version which exposes the c function.
-
+-- TODO: try to run this in a transaction along with all
+-- the rest of the initialisation code to prevent a race condition
+-- where the RTS is multi-threaded.
+{-
 loadExtension :: SS.Connection -> T.Text -> IO ()
-loadExtension c name = SS.execute c "select load_extension(?)" (SS.Only name)
+loadExtension c name =
+  SS.execute c "select load_extension(?)" (SS.Only name)
+-}
+-- call to ffi function since this is now marked unsafe will
+-- block all threads in RTS until extension library is loaded
+-- avoiding race conditions.  
+
+
+loadExtension' :: SS.Connection -> T.Text -> IO ()
+loadExtension' c name = 
+  SD.loadExtension (SS.connectionHandle c) (toUtf8 name) >> return ()
 
 -- Try very hard to load a mod_spatialite extension library
 -- N.B. on some platforms or versions of SQLite the database function 
--- implementing this seems to do this work for us... 
-
+-- implementing this seems to do the work of trying the dylib variants 
+--
 loadSpatialExtension :: SS.Connection -> IO ()
 loadSpatialExtension c =
-  loadExtension c "mod_spatialite" <|> 
-  loadExtension c "mod_spatialite.so" <|>
-  loadExtension c "mod_spatialite.dylib"
+  loadExtension' c "mod_spatialite" <|>
+  loadExtension' c "mod_spatialite.so" <|>
+  loadExtension' c "mod_spatialite.dylib"
 
 -- Check if a table exist in the schema.
 
@@ -143,3 +170,15 @@ hasSpatialSchema c = tableExists c "spatial_ref_sys"
 
 ensureSpatialSchema :: SS.Connection -> IO ()
 ensureSpatialSchema c = SS.execute_ c "SELECT InitSpatialMetaData()"
+
+{-# INLINE toUtf8 #-}
+toUtf8 :: T.Text -> SD.Utf8
+toUtf8 = SD.Utf8 . E.encodeUtf8
+
+{-
+utf8toText :: SD.Utf8 -> T.Text
+utf8toText (SD.Utf8 b) = E.decodeUtf8 b 
+
+utf8toString :: SD.Utf8 -> String
+utf8toString = T.unpack . utf8toText
+-}

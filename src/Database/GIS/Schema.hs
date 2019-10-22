@@ -6,7 +6,7 @@
 module Database.GIS.Schema 
     ( addWGS84PointColToTable
     , hasSpatiaLiteSchema
-       -- 
+    -- 
     , module Database.SQLite.Simple.ToField
     , module Database.SQLite.Simple.FromField
     , module Database.SQLite.Simple.FromRow
